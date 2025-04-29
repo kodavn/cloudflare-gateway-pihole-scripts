@@ -1,6 +1,6 @@
 # Cloudflare Gateway Pi-hole Scripts (CGPS)
 
-![Cloudflare Gateway Analytics screenshot](.github/images/gateway_analytics.png)
+![Cloudflare Gateway Analytics screenshot showing a thousand blocked DNS requests](.github/images/gateway_analytics.png)
 
 Cloudflare Gateway allows you to create custom rules to filter HTTP, DNS, and network traffic based on your firewall policies. This is a collection of scripts that can be used to get a similar experience as if you were using Pi-hole, but with Cloudflare Gateway - so no servers to maintain or need to buy a Raspberry Pi!
 
@@ -17,9 +17,10 @@ Cloudflare Gateway allows you to create custom rules to filter HTTP, DNS, and ne
 - Support for basic hosts files
 - Full support for domain lists
 - Automatically cleans up filter lists: removes duplicates, invalid domains, comments and more
-- Works fully unattended
-- Whitelist support, allowing you to prevent false positives and breakage by forcing trusted domains to always be unblocked.
-- Optional health check: Sends a ping request ensuring continuous monitoring and alerting for the workflow execution.
+- Works **fully unattended**
+- **Allowlist support**, allowing you to prevent false positives and breakage by forcing trusted domains to always be unblocked.
+- Experimental **SNI-based filtering** that works independently of DNS settings, preventing unauthorized or malicious DNS changes from bypassing the filter.
+- Optional health check: Sends a ping request ensuring continuous monitoring and alerting for the workflow execution, or messages a Discord webhook with progress.
 
 ## Usage
 
@@ -38,7 +39,7 @@ Cloudflare Gateway allows you to create custom rules to filter HTTP, DNS, and ne
 2. Run `npm install` to install dependencies.
 3. Copy `.env.example` to `.env` and fill in the values.
 4. If this is a subsequent run, execute `node cf_gateway_rule_delete.js` and `node cf_list_delete.js` (in order) to delete old data.
-5. If you haven't downloaded any filters yourself, run the `node download_lists.js` command to download recommended filter lists (about 250 000 domains).
+5. If you haven't downloaded any filters yourself, run the `node download_lists.js` command to download recommended filter lists (about 50 000 domains).
 6. Run `node cf_list_create.js` to create the lists in Cloudflare Gateway. This will take a while.
 7. Run `node cf_gateway_rule_create.js` to create the firewall rule in Cloudflare Gateway.
 8. Profit!
@@ -47,23 +48,19 @@ Cloudflare Gateway allows you to create custom rules to filter HTTP, DNS, and ne
 
 These scripts can be run using GitHub Actions so your filters will be automatically updated and pushed to Cloudflare Gateway. This is useful if you are using a frequently updated malware blocklist.
 
-Please note that the GitHub Action downloads the recommended blocklists and whitelist by default. You can change this behavior by editing the file.
+Please note that the GitHub Action downloads the recommended blocklists and whitelist by default. You can change this behavior by setting Actions variables.
 
-1. Create a new empty, private repository. Forking or public repositories are discouraged, but supported - although the script never leaks your API keys and GitHub Actions secrets are automatically redacted from the logs, it's better to be safe than sorry.
+1. Create a new empty, private repository. Forking or public repositories are discouraged, but supported - although the script never leaks your API keys and GitHub Actions secrets are automatically redacted from the logs, it's better to be safe than sorry. There is **no need to use the "Sync fork" button** if you're doing that! The GitHub Action downloads the latest code regardless of what's in your forked repository.
 2. Create the following GitHub Actions secrets in your repository settings:
-
-- `CLOUDFLARE_API_TOKEN`: Your Cloudflare API Token with Zero Trust read and edit permissions
-- `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID
-- `CLOUDFLARE_LIST_ITEM_LIMIT`: The maximum number of blocked domains allowed for your Cloudflare Zero Trust plan. Default to 300,000. Optional if you are using the free plan.
-- `PING_URL`: /Optional/ The HTTP(S) URL to ping (using curl) after the GitHub Action has successfully updated your filters. Useful for monitoring.
-- `DISCORD_WEBHOOK_URL`: /Optional/ The Discord (or similar) webhook URL to send notifications to. Good for monitoring as well.
-
+   - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API Token with Zero Trust read and edit permissions
+   - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID
+   - `CLOUDFLARE_LIST_ITEM_LIMIT`: The maximum number of blocked domains allowed for your Cloudflare Zero Trust plan. Default to 300,000. Optional if you are using the free plan.
+   - `PING_URL`: /Optional/ The HTTP(S) URL to ping (using curl) after the GitHub Action has successfully updated your filters. Useful for monitoring.
+   - `DISCORD_WEBHOOK_URL`: /Optional/ The Discord (or similar) webhook URL to send notifications to. Good for monitoring as well.
 3. Create the following GitHub Actions variables in your repository settings if you desire:
-
-- `FAST_MODE`: Enable the scripts to send the requests simultaneously. Beware that there's a rate limit of 1200 requests per five minutes (https://developers.cloudflare.com/fundamentals/api/reference/limits/) so make sure you know what you are doing.
-- `ALLOWLIST_URLS`: Uses your own allowlists. One URL per line. Recommended allowlists will be used if this variable is not provided.
-- `BLOCKLIST_URLS`: Uses your own blocklists. One URL per line. Recommended blocklists will be used if this variable is not provided.
-
+   - `ALLOWLIST_URLS`: Uses your own allowlists. One URL per line. Recommended allowlists will be used if this variable is not provided.
+   - `BLOCKLIST_URLS`: Uses your own blocklists. One URL per line. Recommended blocklists will be used if this variable is not provided.
+   - `BLOCK_PAGE_ENABLED`: Enable showing block page if host is blocked.
 4. Create a new file in the repository named `.github/workflows/main.yml` with the contents of `auto_update_github_action.yml` found in this repository. The default settings will update your filters every week at 3 AM UTC. You can change this by editing the `schedule` property.
 5. Enable GitHub Actions in your repository settings.
 
@@ -73,7 +70,11 @@ Please note that the GitHub Action downloads the recommended blocklists and whit
 2. Click on the default location or create one if it doesn't exist.
 3. Configure your router or device based on the provided DNS addresses.
 
-Alternatively, you can install the Cloudflare WARP client and log in to Zero Trust. This method proxies your traffic over Cloudflare servers, meaning it works similarly to a commercial VPN.
+Alternatively, you can install the Cloudflare WARP client and log in to Zero Trust. This method proxies your traffic over Cloudflare servers, meaning it works similarly to a commercial VPN. You need to do this if you want to use the SNI-based filtering feature, as it requires Cloudflare to inspect your raw traffic (HTTPS remains encrypted if "TLS decryption" is disabled).
+
+### Malware blocking
+
+The default filter lists are only optimized for ad & tracker blocking because Cloudflare Zero Trust itself comes with much more advanced security features. It's recommended that you create your own Cloudflare Gateway firewall policies that leverage those features on top of CGPS.
 
 ### Dry runs
 
@@ -81,6 +82,7 @@ To see if e.g. your filter lists are valid without actually changing anything in
 
 **Warning:** This currently only works for `cf_list_create.js`.
 
+<!-- markdownlint-disable-next-line MD026 -->
 ## Why not...
 
 ### Pi-hole or Adguard Home?
@@ -94,7 +96,7 @@ To see if e.g. your filter lists are valid without actually changing anything in
 
 ### Cloudflare Gateway?
 
-- Requires a valid credit card or PayPal account
+- Requires a valid payment card or PayPal account
 - Limit of 300k domains on the free plan
 
 ### a hosts file?
@@ -107,7 +109,3 @@ To see if e.g. your filter lists are valid without actually changing anything in
 ## License
 
 MIT License. See `LICENSE` for more information.
-
-## Donations
-
-If you would like to donate to support this project, you can do so via Liberapay - click the Sponsor button or see my GitHub profile for the link.
